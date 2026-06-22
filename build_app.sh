@@ -12,6 +12,10 @@ cd "$(dirname "$0")"
   --noconfirm --clean --windowed \
   --name "Handy Transcribe" \
   --add-data "web:web" \
+  --collect-data onnx_asr \
+  --collect-submodules onnx_asr \
+  --copy-metadata onnx-asr \
+  --copy-metadata onnxruntime \
   app.py
 
 echo

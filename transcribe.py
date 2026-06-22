@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -26,6 +27,20 @@ import wave
 from pathlib import Path
 
 import numpy as np
+
+
+def _find_ffmpeg() -> str:
+    """Locate ffmpeg even when launched from Finder (no shell PATH)."""
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    for cand in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"):
+        if Path(cand).exists():
+            return cand
+    return "ffmpeg"  # last resort; will raise a clear error if truly missing
+
+
+FFMPEG = _find_ffmpeg()
 
 MODEL_NAME = "nemo-parakeet-tdt-0.6b-v3"
 DEFAULT_MODEL_DIR = (
@@ -88,7 +103,7 @@ def resolve_model_dir(arg: str | None) -> Path:
 def decode_to_wav(src: Path, dst: Path) -> None:
     """Decode any audio/video file to 16 kHz mono PCM16 WAV via ffmpeg."""
     cmd = [
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+        FFMPEG, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
         "-i", str(src),
         "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s16le",
         str(dst),
@@ -142,17 +157,25 @@ def build_cues(tokens, timestamps, audio_dur):
         cur_tokens = []
         cur_start = None
 
+    pending_break = False
     for i, (tok, ts) in enumerate(zip(tokens, timestamps)):
+        # A token that begins a new word starts with a space (subword
+        # continuations do not). Only break cues at word boundaries so we
+        # never split a word like "blo" / "cks" across two cues.
+        starts_word = (i == 0) or tok[:1].isspace() or tok[:1] == "▁"
+        if pending_break and starts_word and cur_tokens:
+            flush(ts)
+            pending_break = False
         if cur_start is None:
             cur_start = ts
         cur_tokens.append(tok)
         next_ts = timestamps[i + 1] if i + 1 < len(timestamps) else audio_dur
         cur_text = "".join(cur_tokens).strip()
-        ends_sentence = cur_text.endswith(SENTENCE_END)
-        too_long = len(cur_text) >= CUE_MAX_CHARS
-        too_slow = (next_ts - cur_start) >= CUE_MAX_SEC
-        if ends_sentence or too_long or too_slow:
+        if cur_text.endswith(SENTENCE_END):
             flush(next_ts)
+            pending_break = False
+        elif len(cur_text) >= CUE_MAX_CHARS or (next_ts - cur_start) >= CUE_MAX_SEC:
+            pending_break = True  # break at the next word boundary
     flush(audio_dur)
     return cues
 

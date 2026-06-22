@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import os
 import shutil
 import subprocess
+import tempfile
 import threading
 from pathlib import Path
 
@@ -229,8 +231,26 @@ def _bind_drop(api: Api):
     WINDOW.events.loaded += on_loaded
 
 
+def _selftest() -> int:
+    """Headless check that the (possibly bundled) app can load the model and
+    transcribe. Triggered by HANDY_SELFTEST=1; used to verify a built .app."""
+    print("SELFTEST: loading model…", flush=True)
+    model = engine.load_model()
+    print("SELFTEST: model loaded OK", flush=True)
+    f = os.environ.get("HANDY_SELFTEST_FILE")
+    if f and Path(f).exists():
+        res = engine.process_one(
+            model, Path(f), Path(tempfile.mkdtemp()), _dt.date.today().isoformat()
+        )
+        print("SELFTEST: transcribed ->", (res["full_text"] or "")[:80], flush=True)
+    print("SELFTEST: OK", flush=True)
+    return 0
+
+
 def main():
     global WINDOW
+    if os.environ.get("HANDY_SELFTEST"):
+        raise SystemExit(_selftest())
     api = Api()
     here = Path(__file__).resolve().parent
     WINDOW = webview.create_window(
