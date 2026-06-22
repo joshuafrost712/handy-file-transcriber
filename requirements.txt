@@ -1,0 +1,6 @@
+# Python 3.12 venv. ffmpeg must be on PATH (brew install ffmpeg).
+# The speech model itself is NOT installed here: it is reused from Handy's
+# app-support folder, so nothing large is downloaded.
+onnx-asr[cpu]
+pywebview
+

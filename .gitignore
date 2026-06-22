@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# macOS
+.DS_Store
+
+# Local library data (never publish transcripts/audio)
+Transcribe Library/

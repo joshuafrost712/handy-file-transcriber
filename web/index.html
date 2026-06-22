@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Handy Transcribe</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🎙️</span>
+      <h1>Handy Transcribe</h1>
+    </div>
+    <nav class="tabs">
+      <button class="tab active" data-tab="add">Add &amp; Transcribe</button>
+      <button class="tab" data-tab="library">Library</button>
+      <button class="tab" data-tab="settings">Settings</button>
+    </nav>
+  </header>
+
+  <div id="status" class="status hidden"></div>
+
+  <main>
+    <!-- ADD TAB -->
+    <section id="tab-add" class="panel active">
+      <div id="dropzone" class="dropzone">
+        <div class="dz-inner">
+          <div class="dz-icon">⬇️</div>
+          <p class="dz-title">Drop audio or video here</p>
+          <p class="dz-sub">or</p>
+          <button id="pickBtn" class="btn primary">Add files…</button>
+        </div>
+      </div>
+
+      <div id="queueCard" class="card hidden">
+        <div class="card-head">
+          <h2>Ready to transcribe</h2>
+          <div>
+            <button id="clearQueue" class="btn ghost">Clear</button>
+            <button id="goBtn" class="btn primary">Transcribe</button>
+          </div>
+        </div>
+        <ul id="queueList" class="filelist"></ul>
+      </div>
+
+      <div id="progressCard" class="card hidden">
+        <h2>Transcribing…</h2>
+        <div class="progress"><div id="progressBar" class="progress-fill"></div></div>
+        <p id="progressText" class="muted"></p>
+      </div>
+
+      <div id="resultsCard" class="card hidden">
+        <div class="card-head">
+          <h2>Done</h2>
+          <div>
+            <button id="saveNone" class="btn ghost">Save none</button>
+            <button id="saveAll" class="btn">Save all audio</button>
+          </div>
+        </div>
+        <p id="retentionNote" class="muted"></p>
+        <ul id="resultsList" class="filelist"></ul>
+      </div>
+    </section>
+
+    <!-- LIBRARY TAB -->
+    <section id="tab-library" class="panel">
+      <div class="searchbar">
+        <input id="searchInput" type="search" placeholder="Search name or words spoken…" />
+        <select id="weekFilter"><option value="">All weeks</option></select>
+        <button id="thisWeek" class="btn ghost small">This week</button>
+        <button id="lastWeek" class="btn ghost small">Last week</button>
+        <span class="spacer"></span>
+        <button id="cleanBtn" class="btn ghost small" title="Delete expired audio now">Clean expired</button>
+      </div>
+      <ul id="libList" class="cards"></ul>
+      <p id="libEmpty" class="muted center hidden">No transcriptions yet.</p>
+    </section>
+
+    <!-- SETTINGS TAB -->
+    <section id="tab-settings" class="panel">
+      <div class="card">
+        <h2>Settings</h2>
+        <label class="field">
+          <span>Library folder</span>
+          <div class="row">
+            <input id="setLibrary" type="text" readonly />
+            <button id="chooseLib" class="btn ghost small">Choose…</button>
+          </div>
+        </label>
+        <label class="field">
+          <span>When adding files, default to</span>
+          <select id="setDisposition">
+            <option value="ask">Ask each time</option>
+            <option value="copy">Copy (keep original)</option>
+            <option value="move">Move (remove original)</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Auto-delete audio after (days)</span>
+          <input id="setDays" type="number" min="0" max="365" />
+        </label>
+        <button id="saveSettings" class="btn primary">Save settings</button>
+        <p id="settingsSaved" class="muted"></p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Move/Copy modal -->
+  <div id="dispModal" class="modal hidden">
+    <div class="modal-box">
+      <h2>Bring files into your library</h2>
+      <p class="muted">Move removes the originals; Copy leaves them where they are.</p>
+      <div class="modal-actions">
+        <button id="dispCopy" class="btn">Copy</button>
+        <button id="dispMove" class="btn primary">Move</button>
+      </div>
+      <label class="remember"><input type="checkbox" id="dispRemember" /> Remember my choice</label>
+    </div>
+  </div>
+
+  <!-- Transcript viewer -->
+  <div id="viewer" class="modal hidden">
+    <div class="modal-box wide">
+      <div class="card-head">
+        <h2 id="viewerTitle">Transcript</h2>
+        <button id="viewerClose" class="btn ghost small">Close</button>
+      </div>
+      <pre id="viewerBody" class="transcript"></pre>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
