@@ -75,13 +75,28 @@ class Api:
 
     # ---- adding files -------------------------------------------------
     def pick_files(self):
-        exts = " ".join(f"*{e}" for e in sorted(AUDIO_EXTS))
-        res = WINDOW.create_file_dialog(
-            webview.FileDialog.OPEN,
-            allow_multiple=True,
-            file_types=(f"Audio/Video ({exts})", "All files (*.*)"),
-        )
-        return list(res) if res else []
+        # pywebview validates filter strings against a strict regex: the
+        # description may contain only [\w ] (no "/"), and extensions must be
+        # SEMICOLON-separated (`*.mp3;*.wav`), not space-separated. Building it
+        # wrong raises ValueError before the dialog opens — which is exactly
+        # how this button used to fail silently. See webview/util.py.
+        try:
+            res = WINDOW.create_file_dialog(
+                webview.FileDialog.OPEN,
+                allow_multiple=True,
+                file_types=(self.audio_video_filter(), "All files (*.*)"),
+            )
+            return list(res) if res else []
+        except Exception as e:  # noqa: BLE001
+            push("error", {"msg": f"Could not open file picker: {e}"})
+            return []
+
+    @staticmethod
+    def audio_video_filter() -> str:
+        """The file-dialog filter string for audio/video. Exposed so a test can
+        assert it passes pywebview's validator without opening a real dialog."""
+        exts = ";".join(f"*{e}" for e in sorted(AUDIO_EXTS))
+        return f"Audio and Video ({exts})"
 
     def add_paths(self, paths, disposition):
         """Stage dropped/picked files for transcription. Does not move yet."""
@@ -264,7 +279,8 @@ def main():
     _bind_drop(api)
     # Sweep expired audio at launch (before UI interaction).
     api.lib.sweep_expired()
-    webview.start()
+    # Set HANDY_DEBUG=1 to open the WebKit devtools console for debugging the UI.
+    webview.start(debug=bool(os.environ.get("HANDY_DEBUG")))
 
 
 if __name__ == "__main__":

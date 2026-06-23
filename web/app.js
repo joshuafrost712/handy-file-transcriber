@@ -28,6 +28,17 @@ window.pyEvent = (type, payload) => {
   else if (type === 'error') showStatus(payload.msg, true);
 };
 
+// Run an async UI action and surface any error in the status banner instead
+// of failing silently (the bug that hid the broken file picker for so long).
+async function guard(fn) {
+  try {
+    await fn();
+  } catch (err) {
+    showStatus('Something went wrong: ' + (err && err.message ? err.message : err), true);
+    console.error(err);
+  }
+}
+
 function showStatus(msg, isError) {
   const el = $('#status');
   if (!msg) { el.classList.add('hidden'); return; }
@@ -45,10 +56,10 @@ const dz = $('#dropzone');
   document.addEventListener(e, () => dz.classList.remove('drag')));
 
 // ---- adding files ---------------------------------------------------
-$('#pickBtn').addEventListener('click', async () => {
+$('#pickBtn').addEventListener('click', () => guard(async () => {
   const paths = await api().pick_files();
   if (paths && paths.length) handleIncoming(paths);
-});
+}));
 
 function handleIncoming(paths) {
   if (!paths || !paths.length) return;
@@ -92,7 +103,7 @@ $('#clearQueue').addEventListener('click', async () => {
   renderQueue([]);
 });
 
-$('#goBtn').addEventListener('click', async () => {
+$('#goBtn').addEventListener('click', () => guard(async () => {
   const r = await api().transcribe_queue();
   if (r.started) {
     $('#queueCard').classList.add('hidden');
@@ -100,7 +111,7 @@ $('#goBtn').addEventListener('click', async () => {
     $('#progressBar').style.width = '0%';
     $('#progressText').textContent = `0 / ${r.count}`;
   }
-});
+}));
 
 function onProgress(p) {
   const pct = Math.round(((p.i - 1) / p.n) * 100);
@@ -237,18 +248,18 @@ async function openTranscript(id, title) {
 $('#viewerClose').addEventListener('click', () => $('#viewer').classList.add('hidden'));
 
 // ---- settings -------------------------------------------------------
-$('#chooseLib').addEventListener('click', async () => {
+$('#chooseLib').addEventListener('click', () => guard(async () => {
   settings = await api().choose_library_folder();
   fillSettings();
-});
-$('#saveSettings').addEventListener('click', async () => {
+}));
+$('#saveSettings').addEventListener('click', () => guard(async () => {
   settings = await api().set_settings({
     default_disposition: $('#setDisposition').value,
     auto_delete_days: Number($('#setDays').value),
   });
   $('#settingsSaved').textContent = 'Saved.';
   setTimeout(() => ($('#settingsSaved').textContent = ''), 2000);
-});
+}));
 
 function fillSettings() {
   $('#setLibrary').value = settings.library_path || '';
