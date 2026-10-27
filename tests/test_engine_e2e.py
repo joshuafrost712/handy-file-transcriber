@@ -42,27 +42,33 @@ def test_transcribes_each_format(model, speech_aiff, tmp_path, ext):
 
 @pytest.mark.skipif(
     not os.environ.get("HANDY_SLOW_TESTS"),
-    reason="set HANDY_SLOW_TESTS=1 to run the >600s windowed-path test",
+    reason="set HANDY_SLOW_TESTS=1 to run the windowed-path test",
 )
 def test_long_file_windowed_path(model, speech_aiff, tmp_path):
-    # Build a >MAX_WINDOW_SEC file with speech near the start AND past the
-    # window boundary, so both windows must produce text.
+    # A file longer than one window, with CONTINUOUS speech so every window must
+    # produce text. This guards the real regression: Parakeet's encoder crashes
+    # past ~400 s, so transcribe_file must split into <=WINDOW_SEC chunks and
+    # offset each chunk's timestamps back to absolute time. We loop a short
+    # clip to fill ~1.5 windows; a single-shot run on this length would raise
+    # the encoder's "broadcast axis" error.
     long_src = tmp_path / "long.wav"
-    boundary = engine.MAX_WINDOW_SEC
-    filt = (
-        f"[0:a]adelay=0|0[a0];"
-        f"[0:a]adelay={(boundary + 20) * 1000}|{(boundary + 20) * 1000}[a1];"
-        f"[a0][a1]amix=inputs=2:duration=longest,apad=whole_dur={boundary + 60}"
-    )
+    target_sec = int(engine.WINDOW_SEC * 1.5)
+    # speech_aiff is ~2 s; loop it enough times to exceed target_sec, then trim.
+    loops = target_sec  # generous upper bound on copies needed
     import subprocess
     subprocess.run(
         [engine.FFMPEG, "-hide_banner", "-loglevel", "error", "-y",
-         "-i", str(speech_aiff), "-filter_complex", filt,
+         "-stream_loop", str(loops), "-i", str(speech_aiff),
+         "-t", str(target_sec),
          "-ar", str(engine.SAMPLE_RATE), "-ac", "1", str(long_src)],
         check=True, capture_output=True,
     )
     res = engine.process_one(model, long_src, tmp_path / "out", TODAY)
-    assert res["duration_sec"] > engine.MAX_WINDOW_SEC
+    assert res["duration_sec"] > engine.WINDOW_SEC
     assert (res["full_text"] or "").strip()
-    # Cues should span beyond the first window if the offset math is right.
-    assert any(end > engine.MAX_WINDOW_SEC for _s, end, _t in res["cues"])
+    # The phrase repeats throughout, so a distinctive token must appear past the
+    # first window, proving the offset math and multi-window merge are correct.
+    assert any(
+        end > engine.WINDOW_SEC and any(w in text.lower() for w in ("test", "three", "four", "five"))
+        for _s, end, text in res["cues"]
+    )

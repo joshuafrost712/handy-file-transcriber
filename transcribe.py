@@ -50,9 +50,24 @@ DEFAULT_MODEL_DIR = (
 DROP_DIR = Path.home() / "Transcribe-Inbox"
 SAMPLE_RATE = 16000
 
-# Files larger than this many seconds are transcribed in fixed windows to bound
-# memory; timestamps from each window are offset back to absolute time.
-MAX_WINDOW_SEC = 600
+# Parakeet's encoder has a fixed positional-encoding limit and crashes outright
+# once the input exceeds ~5000 frames (about 400 s of audio): onnxruntime raises
+# "Attempting to broadcast an axis ... 77 by 5077" from a self-attention Add node.
+# So anything longer must be transcribed in windows, with each window's
+# timestamps offset back to absolute time.
+#
+# WINDOW_SEC is the target chunk length, kept comfortably under that hard ceiling.
+# To avoid slicing a word in half at a window boundary (which loses or garbles a
+# word per cut), we search back up to WINDOW_SLACK_SEC for the quietest spot and
+# cut there instead. Worst-case chunk length is WINDOW_SEC, still well under the
+# ceiling.
+#
+# The window is much shorter than the ceiling requires because, well before the
+# crash, Parakeet silently omits stretches of speech as a single pass grows: a
+# 121 s clip lost 27% of its words in one pass versus 45 s windows, and gains
+# flatten below 45 s.
+WINDOW_SEC = 45
+WINDOW_SLACK_SEC = 10
 
 # SRT cue sizing.
 CUE_MAX_CHARS = 84
@@ -180,23 +195,57 @@ def build_cues(tokens, timestamps, audio_dur):
     return cues
 
 
+def split_points(audio: np.ndarray, sr: int = SAMPLE_RATE) -> list[tuple[int, int]]:
+    """Return (start, end) sample ranges that tile `audio` into safe windows.
+
+    Each range is at most WINDOW_SEC long (so the encoder never overflows). To
+    avoid cutting through a word, the boundary is placed at the quietest 0.1 s
+    frame within the last WINDOW_SLACK_SEC of each window; in natural speech that
+    lands in a pause between words.
+    """
+    n = len(audio)
+    win = WINDOW_SEC * sr
+    slack = WINDOW_SLACK_SEC * sr
+    frame = max(1, sr // 10)  # 0.1 s granularity for the silence search
+    ranges: list[tuple[int, int]] = []
+    start = 0
+    while start < n:
+        ideal_end = start + win
+        if ideal_end >= n:
+            ranges.append((start, n))
+            break
+        lo = max(start + frame, ideal_end - slack)
+        # RMS of each 0.1 s frame in [lo, ideal_end); cut at the quietest one.
+        region = audio[lo:ideal_end]
+        nf = len(region) // frame
+        if nf >= 1:
+            frames = region[: nf * frame].reshape(nf, frame)
+            rms = np.sqrt((frames.astype(np.float32) ** 2).mean(axis=1))
+            cut = lo + int(rms.argmin()) * frame + frame // 2
+        else:
+            cut = ideal_end
+        ranges.append((start, cut))
+        start = cut
+    return ranges
+
+
 def transcribe_file(model, wav_path: Path):
     """Return (full_text, cues) for a decoded WAV using token timestamps."""
     audio = read_wav_mono(wav_path)
     dur = len(audio) / SAMPLE_RATE
     tx = model.with_timestamps()
 
-    if dur <= MAX_WINDOW_SEC:
+    if dur <= WINDOW_SEC:
         r = tx.recognize(str(wav_path))
         cues = build_cues(r.tokens, r.timestamps, dur)
         return r.text.strip(), cues
 
-    # Long file: process in fixed windows, offsetting timestamps to absolute.
-    win = MAX_WINDOW_SEC * SAMPLE_RATE
+    # Long file: process in silence-aligned windows, offsetting timestamps to
+    # absolute time so the merged SRT stays correct.
     all_text: list[str] = []
     all_cues = []
-    for start in range(0, len(audio), win):
-        chunk = audio[start : start + win]
+    for start, end in split_points(audio, SAMPLE_RATE):
+        chunk = audio[start:end]
         offset = start / SAMPLE_RATE
         chunk_dur = len(chunk) / SAMPLE_RATE
         r = tx.recognize(chunk, sample_rate=SAMPLE_RATE)

@@ -48,7 +48,9 @@ For each input file it writes, next to the source (or into `--out DIR`):
 - `<name>.srt` timestamped subtitle cues
 
 Handles common audio and video containers (m4a, mp3, mp4, mov, wav, flac, …) via
-ffmpeg. Long recordings are processed in windows so memory stays bounded.
+ffmpeg. Recordings longer than 45 s are split into windows cut at silent gaps
+(Parakeet drops speech on long single passes and crashes past ~400 s), and each
+window's timestamps are merged back to absolute time.
 
 ## Requirements
 
